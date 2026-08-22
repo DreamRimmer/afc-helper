@@ -2373,14 +2373,23 @@
 					} else if ( data.lifeStatus === 'unknown' ) {
 						deathYear = 'UNKNOWN';
 					}
-					// {{subst:L}}, which generates DEFAULTSORT as well as
-					// adds the appropriate birth/death year categories
-					newText.append( '\n{{subst:L' +
+					
+					// Check if DEFAULTSORT already exists on the page
+					const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*[^}]+\}\}/i;
+					const hasDefaultsort = defaultsortRegex.test( newText.get() );
+					
+					// build the L template
+					let Ltemplate = '{{subst:L' +
 						'|1=' + data.birthYear +
-						'|2=' + deathYear +
-						'|3=' + data.subjectName + '}}'
-					);
-
+						'|2=' + deathYear;
+					
+					// only add parameter 3 (DEFAULTSORT) if one doesn't already exist
+					if ( !hasDefaultsort ) {
+						Ltemplate += '|3=' + data.subjectName;
+					}
+					
+					Ltemplate += '}}';
+					newText.append( '\n' + Ltemplate );
 				}
 
 				// Stub sorting
