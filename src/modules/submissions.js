@@ -2171,11 +2171,13 @@
 			isLiving = deathYear === 'LIVING',
 			deathMissing = !deathYear || deathYear.toUpperCase() === 'MISSING';
 
-		categories.push(
-			birthMissing ?
-				( isLiving ? 'Year of birth missing (living people)' : 'Year of birth missing' ) :
-				birthYear + ' births'
-		);
+		if ( birthMissing && isLiving ) {
+			categories.push( 'Year of birth missing (living people)' );
+		} else if ( birthMissing ) {
+			categories.push( 'Year of birth missing' );
+		} else {
+			categories.push( birthYear + ' births' );
+		}
 
 		if ( isLiving ) {
 			categories.push( 'Living people' );
