@@ -2165,6 +2165,40 @@
 		}
 	}
 
+	function getLTemplateCategories( birthYear, deathYear ) {
+		let categories = [],
+			birthMissing = !birthYear || birthYear.toUpperCase() === 'MISSING',
+			isLiving = deathYear === 'LIVING',
+			deathMissing = !deathYear || deathYear.toUpperCase() === 'MISSING';
+
+		categories.push(
+			birthMissing ?
+				( isLiving ? 'Year of birth missing (living people)' : 'Year of birth missing' ) :
+				birthYear + ' births'
+		);
+
+		if ( isLiving ) {
+			categories.push( 'Living people' );
+		} else if ( deathMissing ) {
+			categories.push( 'Year of death missing' );
+		} else {
+			categories.push( deathYear + ' deaths' );
+		}
+
+		return categories;
+	}
+
+	function removeExistingCategories( text, categoryNames ) {
+		$.each( categoryNames, ( _, catName ) => {
+			const escaped = catName.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ),
+				catRegex = new RegExp(
+					'\\[\\[:?Category:\\s*' + escaped + '\\s*(\\|[^\\]]*)?\\]\\]\\n?',
+					'gi'
+				);
+			text.set( text.get().replace( catRegex, '' ) );
+		} );
+	}
+
 	function checkIfUserIsBlocked( userName ) {
 		return AFCH.api.get( {
 			action: 'query',
@@ -2374,22 +2408,69 @@
 						deathYear = 'UNKNOWN';
 					}
 
-					// Check if DEFAULTSORT already exists on the page
-					const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*[^}]+\}\}/i;
-					const hasDefaultsort = defaultsortRegex.test( newText.get() );
+					const birthYear = data.birthYear || 'MISSING',
+						predictedCats = getLTemplateCategories( birthYear, deathYear );
 
-					// build the L template
-					let Ltemplate = '{{subst:L' +
-						'|1=' + data.birthYear +
-						'|2=' + deathYear;
+					// check if DEFAULTSORT already exists on the page, and whether
+					// its value already matches what the reviewer entered
+					const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*([^}]+)\}\}/i,
+						defaultsortMatch = newText.get().match( defaultsortRegex ),
+						hasDefaultsort = !!defaultsortMatch,
+						existingSortkey = hasDefaultsort ? defaultsortMatch[ 1 ].trim() : null,
+						defaultsortMatchesIntent = hasDefaultsort &&
+							( !data.subjectName || existingSortkey === data.subjectName.trim() );
 
-					// only add parameter 3 (DEFAULTSORT) if one doesn't already exist
-					if ( !hasDefaultsort ) {
-						Ltemplate += '|3=' + data.subjectName;
+					// check if every predicted category is already present, verbatim
+					let allCategoriesAlreadyPresent = true;
+					$.each( predictedCats, ( _, catName ) => {
+						const escaped = catName.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ),
+							catExists = new RegExp( '\\[\\[:?Category:\\s*' + escaped + '\\s*(\\|[^\\]]*)?\\]\\]', 'i' )
+								.test( newText.get() );
+						if ( !catExists ) {
+							allCategoriesAlreadyPresent = false;
+							return false;
+						}
+					} );
+
+					if ( allCategoriesAlreadyPresent && defaultsortMatchesIntent ) {
+						// page already reflects the intended state -- don't touch it
+
+					} else {
+						// remove categories that {{L}} is about to regenerate
+						removeExistingCategories( newText, predictedCats );
+
+						// also remove stale "missing" placeholder categories in case
+						// the reviewer just filled in a value that used to be missing
+						let alsoStrip = [];
+						if ( birthYear !== 'MISSING' ) {
+							alsoStrip.push( 'Year of birth missing', 'Year of birth missing (living people)' );
+						}
+						if ( deathYear !== 'MISSING' && deathYear !== 'UNKNOWN' ) {
+							alsoStrip.push( 'Year of death missing' );
+						}
+						if ( alsoStrip.length ) {
+							removeExistingCategories( newText, alsoStrip );
+						}
+
+						// if an existing DEFAULTSORT is present but wrong, remove it
+						// so the template's version replaces it instead of coexisting
+						if ( hasDefaultsort && !defaultsortMatchesIntent ) {
+							newText.set( newText.get().replace( defaultsortRegex, '' ) );
+						}
+
+						// build the L template
+						let Ltemplate = '{{subst:L' +
+							'|1=' + data.birthYear +
+							'|2=' + deathYear;
+
+						// only add parameter 3 (DEFAULTSORT) if a correct one doesn't already exist
+						if ( !hasDefaultsort || !defaultsortMatchesIntent ) {
+							Ltemplate += '|3=' + data.subjectName;
+						}
+
+						Ltemplate += '}}';
+						newText.append( '\n' + Ltemplate );
 					}
-
-					Ltemplate += '}}';
-					newText.append( '\n' + Ltemplate );
 				}
 
 				// Stub sorting
