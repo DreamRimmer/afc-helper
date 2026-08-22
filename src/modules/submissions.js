@@ -2373,21 +2373,21 @@
 					} else if ( data.lifeStatus === 'unknown' ) {
 						deathYear = 'UNKNOWN';
 					}
-					
+
 					// Check if DEFAULTSORT already exists on the page
 					const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*[^}]+\}\}/i;
 					const hasDefaultsort = defaultsortRegex.test( newText.get() );
-					
+
 					// build the L template
 					let Ltemplate = '{{subst:L' +
 						'|1=' + data.birthYear +
 						'|2=' + deathYear;
-					
+
 					// only add parameter 3 (DEFAULTSORT) if one doesn't already exist
 					if ( !hasDefaultsort ) {
 						Ltemplate += '|3=' + data.subjectName;
 					}
-					
+
 					Ltemplate += '}}';
 					newText.append( '\n' + Ltemplate );
 				}
