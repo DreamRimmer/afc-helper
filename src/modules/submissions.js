@@ -780,6 +780,86 @@
 		}
 	};
 
+	/**
+	 * Adds/updates biography categories (birth year, death year, living
+	 * people) and DEFAULTSORT via {{subst:L}}, without creating duplicate
+	 * categories if matching ones already exist on the page. Also cleans up
+	 * "missing" placeholder categories once a real year has been supplied,
+	 * and replaces a stale DEFAULTSORT if it doesn't match the given name.
+	 */
+	AFCH.Text.prototype.applyBiographyTemplate = function ( rawBirthYear, deathYear, subjectName ) {
+		let text = this.text;
+
+		// Normalize blank birth year to 'MISSING', matching what {{L}} expects
+		const birthYear = rawBirthYear || 'MISSING',
+			// Figure out which categories {{L}} is about to generate, so we
+			// can check for + remove any duplicates already on the page
+			predictedCats = getLTemplateCategories( birthYear, deathYear );
+
+		// Check if DEFAULTSORT already exists on the page, and whether its
+		// value already matches what the reviewer entered in the form
+		const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*([^}]+)\}\}/i,
+			defaultsortMatch = text.match( defaultsortRegex ),
+			hasDefaultsort = !!defaultsortMatch,
+			existingSortkey = hasDefaultsort ? defaultsortMatch[ 1 ].trim() : null,
+			defaultsortMatchesIntent = hasDefaultsort &&
+				( !subjectName || existingSortkey === subjectName.trim() );
+
+		// Check if every predicted category is already present, verbatim
+		let allCategoriesAlreadyPresent = true;
+		$.each( predictedCats, ( _, catName ) => {
+			if ( !categoryExistsInWikitext( text, catName ) ) {
+				allCategoriesAlreadyPresent = false;
+				return false; // break out of $.each
+			}
+		} );
+
+		// If the page already reflects the intended state, don't touch it --
+		// avoids pointless remove-then-readd diff churn
+		if ( allCategoriesAlreadyPresent && defaultsortMatchesIntent ) {
+			this.text = text;
+			return this.text;
+		}
+
+		// Remove categories that {{L}} is about to regenerate, so subst
+		// doesn't produce duplicates
+		text = removeCategoriesFromWikitext( text, predictedCats );
+
+		// also remove stale "missing" placeholder categories in case the
+		// reviewer just filled in a value that used to be missing
+		let alsoStrip = [];
+		if ( birthYear !== 'MISSING' ) {
+			alsoStrip.push( 'Year of birth missing', 'Year of birth missing (living people)' );
+		}
+		if ( deathYear !== 'MISSING' && deathYear !== 'UNKNOWN' ) {
+			alsoStrip.push( 'Year of death missing' );
+		}
+		if ( alsoStrip.length ) {
+			text = removeCategoriesFromWikitext( text, alsoStrip );
+		}
+
+		// If an existing DEFAULTSORT is present but wrong, remove it so the
+		// template's version replaces it instead of the two coexisting
+		if ( hasDefaultsort && !defaultsortMatchesIntent ) {
+			text = text.replace( defaultsortRegex, '' );
+		}
+
+		// Build the L template
+		let Ltemplate = '{{subst:L' +
+			'|1=' + rawBirthYear +
+			'|2=' + deathYear;
+
+		// Only add parameter 3 (DEFAULTSORT) if a correct one doesn't already exist
+		if ( !hasDefaultsort || !defaultsortMatchesIntent ) {
+			Ltemplate += '|3=' + subjectName;
+		}
+
+		Ltemplate += '}}';
+
+		this.text = text + '\n' + Ltemplate;
+		return this.text;
+	};
+
 	if ( typeof inUnitTestEnvironment === 'undefined' ) {
 		// Add the launch link
 		$afchLaunchLink = $( mw.util.addPortletLink( AFCH.prefs.launchLinkPosition, '#', 'Review (AFCH)',
@@ -2190,15 +2270,23 @@
 		return categories;
 	}
 
-	function removeExistingCategories( text, categoryNames ) {
+	function categoryExistsInWikitext( wikitext, catName ) {
+		const escaped = catName.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ),
+			catRegex = new RegExp( '\\[\\[:?Category:\\s*' + escaped + '\\s*(\\|[^\\]]*)?\\]\\]', 'i' );
+		return catRegex.test( wikitext );
+	}
+
+	function removeCategoriesFromWikitext( wikitext, categoryNames ) {
+		let text = wikitext;
 		$.each( categoryNames, ( _, catName ) => {
 			const escaped = catName.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ),
 				catRegex = new RegExp(
 					'\\[\\[:?Category:\\s*' + escaped + '\\s*(\\|[^\\]]*)?\\]\\]\\n?',
 					'gi'
 				);
-			text.set( text.get().replace( catRegex, '' ) );
+			text = text.replace( catRegex, '' );
 		} );
+		return text;
 	}
 
 	function checkIfUserIsBlocked( userName ) {
@@ -2410,69 +2498,7 @@
 						deathYear = 'UNKNOWN';
 					}
 
-					const birthYear = data.birthYear || 'MISSING',
-						predictedCats = getLTemplateCategories( birthYear, deathYear );
-
-					// check if DEFAULTSORT already exists on the page, and whether
-					// its value already matches what the reviewer entered
-					const defaultsortRegex = /\{\{\s*DEFAULTSORT\s*:\s*([^}]+)\}\}/i,
-						defaultsortMatch = newText.get().match( defaultsortRegex ),
-						hasDefaultsort = !!defaultsortMatch,
-						existingSortkey = hasDefaultsort ? defaultsortMatch[ 1 ].trim() : null,
-						defaultsortMatchesIntent = hasDefaultsort &&
-							( !data.subjectName || existingSortkey === data.subjectName.trim() );
-
-					// check if every predicted category is already present, verbatim
-					let allCategoriesAlreadyPresent = true;
-					$.each( predictedCats, ( _, catName ) => {
-						const escaped = catName.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ),
-							catExists = new RegExp( '\\[\\[:?Category:\\s*' + escaped + '\\s*(\\|[^\\]]*)?\\]\\]', 'i' )
-								.test( newText.get() );
-						if ( !catExists ) {
-							allCategoriesAlreadyPresent = false;
-							return false;
-						}
-					} );
-
-					if ( allCategoriesAlreadyPresent && defaultsortMatchesIntent ) {
-						// page already reflects the intended state -- don't touch it
-
-					} else {
-						// remove categories that {{L}} is about to regenerate
-						removeExistingCategories( newText, predictedCats );
-
-						// also remove stale "missing" placeholder categories in case
-						// the reviewer just filled in a value that used to be missing
-						let alsoStrip = [];
-						if ( birthYear !== 'MISSING' ) {
-							alsoStrip.push( 'Year of birth missing', 'Year of birth missing (living people)' );
-						}
-						if ( deathYear !== 'MISSING' && deathYear !== 'UNKNOWN' ) {
-							alsoStrip.push( 'Year of death missing' );
-						}
-						if ( alsoStrip.length ) {
-							removeExistingCategories( newText, alsoStrip );
-						}
-
-						// if an existing DEFAULTSORT is present but wrong, remove it
-						// so the template's version replaces it instead of coexisting
-						if ( hasDefaultsort && !defaultsortMatchesIntent ) {
-							newText.set( newText.get().replace( defaultsortRegex, '' ) );
-						}
-
-						// build the L template
-						let Ltemplate = '{{subst:L' +
-							'|1=' + data.birthYear +
-							'|2=' + deathYear;
-
-						// only add parameter 3 (DEFAULTSORT) if a correct one doesn't already exist
-						if ( !hasDefaultsort || !defaultsortMatchesIntent ) {
-							Ltemplate += '|3=' + data.subjectName;
-						}
-
-						Ltemplate += '}}';
-						newText.append( '\n' + Ltemplate );
-					}
+					newText.applyBiographyTemplate( data.birthYear, deathYear, data.subjectName );
 				}
 
 				// Stub sorting
