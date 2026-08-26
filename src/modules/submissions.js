@@ -786,6 +786,11 @@
 	 * categories if matching ones already exist on the page. Also cleans up
 	 * "missing" placeholder categories once a real year has been supplied,
 	 * and replaces a stale DEFAULTSORT if it doesn't match the given name.
+	 *
+	 * @param {string} rawBirthYear birth year, or '' if unknown
+	 * @param {string} deathYear death year, or 'LIVING'/'MISSING'/'UNKNOWN'
+	 * @param {string} subjectName DEFAULTSORT sortkey
+	 * @return {string}
 	 */
 	AFCH.Text.prototype.applyBiographyTemplate = function ( rawBirthYear, deathYear, subjectName ) {
 		let text = this.text;
