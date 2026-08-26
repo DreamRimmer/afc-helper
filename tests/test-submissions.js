@@ -339,6 +339,66 @@ describe( 'AFCH.Text.removeAfcTemplates', () => {
 	} );
 } );
 
+describe( 'AFCH.Text.applyBiographyTemplate', () => {
+	it( 'adds the L template with categories for a living person', () => {
+		const wikicode = 'Some article text.';
+		const expectedOutput = 'Some article text.\n{{subst:L|1=1990|2=LIVING|3=Smith, John}}';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1990', 'LIVING', 'Smith, John' );
+		expect( output ).toBe( expectedOutput );
+	} );
+
+	it( 'adds the L template for someone who has died, with both years known', () => {
+		const wikicode = 'Some article text.';
+		const expectedOutput = 'Some article text.\n{{subst:L|1=1899|2=1986|3=Smith, John}}';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', '1986', 'Smith, John' );
+		expect( output ).toBe( expectedOutput );
+	} );
+
+	it( 'does not add a duplicate category if the same one is already on the page', () => {
+		// page already has 1899 births on it, template is about to add it again
+		const wikicode = '[[Category:1899 births]]\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', 'LIVING', 'Smith, John' );
+		// should only show up once, not twice
+		const occurrences = ( output.match( /\[\[Category:1899 births\]\]/g ) || [] ).length;
+		expect( occurrences ).toBe( 0 ); // old one gets stripped, template will re-add it on subst
+		expect( output ).toContain( '{{subst:L|1=1899|2=LIVING|3=Smith, John}}' );
+	} );
+
+	it( 'leaves the page alone if everything is already correct', () => {
+		// nothing to fix here, DEFAULTSORT + categories already match what we'd add
+		const wikicode = '{{DEFAULTSORT:Smith, John}}\n[[Category:1899 births]]\n[[Category:Living people]]\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', 'LIVING', 'Smith, John' );
+		expect( output ).toBe( wikicode );
+	} );
+
+	it( 'removes the "year of birth missing" placeholder once a real birth year is given', () => {
+		const wikicode = '[[Category:Year of birth missing]]\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', 'LIVING', 'Smith, John' );
+		expect( output ).not.toContain( '[[Category:Year of birth missing]]' );
+	} );
+
+	it( 'removes the "year of death missing" placeholder once a real death year is given', () => {
+		const wikicode = '[[Category:Year of death missing]]\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', '1986', 'Smith, John' );
+		expect( output ).not.toContain( '[[Category:Year of death missing]]' );
+	} );
+
+	it( 'swaps out an old wrong DEFAULTSORT for the one the reviewer typed', () => {
+		// page has a typo'd sortkey, reviewer fixed it in the form
+		const wikicode = '{{DEFAULTSORT:Smith, J.}}\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', 'LIVING', 'Smith, John' );
+		expect( output ).not.toContain( '{{DEFAULTSORT:Smith, J.}}' );
+		expect( output ).toContain( '|3=Smith, John' );
+	} );
+
+	it( 'skips param 3 if DEFAULTSORT already matches what the reviewer typed', () => {
+		const wikicode = '{{DEFAULTSORT:Smith, John}}\nSome article text.';
+		const output = ( new AFCH.Text( wikicode ) ).applyBiographyTemplate( '1899', 'LIVING', 'Smith, John' );
+		expect( output ).toContain( '{{subst:L|1=1899|2=LIVING}}' );
+		expect( output ).not.toContain( '|3=' );
+	} );
+} );
+
 describe( 'AFCH.Submission.loadDataFromTemplates()', () => {
 	it( 'Wikitext is Test', () => {
 		const templates = [];
