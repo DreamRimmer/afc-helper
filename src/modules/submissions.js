@@ -792,7 +792,7 @@
 	 * @param {string} subjectName DEFAULTSORT sortkey
 	 * @return {string}
 	 */
-	AFCH.Text.prototype.applyBiographyTemplate = function ( rawBirthYear, deathYear, subjectName ) {
+	AFCH.Text.prototype.addBiographyCategoriesAndDefaultSort = function ( rawBirthYear, deathYear, subjectName ) {
 		let text = this.text;
 
 		// Normalize blank birth year to 'MISSING', matching what {{L}} expects
@@ -2503,7 +2503,7 @@
 						deathYear = 'UNKNOWN';
 					}
 
-					newText.applyBiographyTemplate( data.birthYear, deathYear, data.subjectName );
+					newText.addBiographyCategoriesAndDefaultSort( data.birthYear, deathYear, data.subjectName );
 				}
 
 				// Stub sorting
